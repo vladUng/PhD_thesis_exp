@@ -1,0 +1,18 @@
+{
+    "python.analysis.exclude": [
+        "data/",
+        "results/",
+        "*.xlsx",
+        "*.tsv"
+    ],
+    "explorer.excludeGitIgnore": false,
+    "editor.formatOnSave": false,
+    "editor.formatOnPaste": true,
+    "python.languageServer": "Default",
+    "pylint.interpreter": [
+        "/Users/vlad/opt/anaconda3/envs/iNet_gt/bin/python"
+    ],
+    "black-formatter.interpreter": [
+        "/Users/vlad/opt/anaconda3/envs/iNet_gt/bin/python"
+    ]
+}

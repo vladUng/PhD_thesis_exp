@@ -1,1 +1,2 @@
-# PhD_thesis_exp
+# Phd_thesis_exp
+Experiments performed in the PhD thesis 
