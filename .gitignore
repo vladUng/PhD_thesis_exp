@@ -17,6 +17,9 @@ reward/
 
 gene_selection/
 
+reclassification/
+
+discussion/
 
 *.pptx
 network_pipeline.png
