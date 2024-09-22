@@ -49,7 +49,7 @@ import numpy.ma as ma
 import pandas as pd
 import scipy.stats as stats
 
-from utilities import markers as mk
+from NetworkAnalysis.utilities import markers as mk
 
 
 class PGCNAArgs:
