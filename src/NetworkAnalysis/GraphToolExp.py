@@ -11,13 +11,12 @@
 
 
 import os
+import pickle as pickle
 
-import _pickle as cPickle
+# import _pickle as cPickle
 import graph_tool.all as gt
 import numpy as np
 import pandas as pd
-import sys
-
 # ploting libs
 import plotly.express as px
 import plotly.graph_objects as go
@@ -25,9 +24,7 @@ from matplotlib import pyplot as plt
 from plotly.subplots import make_subplots
 
 # custom library
-sys.path.append('/Users/vlad/Documents/Code/York/iNet_v2/src/')
-# from ..PGCNA_Stats. import NetworkOutput
-from NetworkAnalysis.ExperimentSet import NetworkOutput
+from .NetworkOutput import NetworkOutput
 
 
 class GraphToolExperiment(NetworkOutput):
@@ -63,7 +60,7 @@ class GraphToolExperiment(NetworkOutput):
 
         if os.path.isfile(gt_g_path):
             with open(gt_g_path, "rb") as handle:
-                part_state = cPickle.load(handle)
+                part_state = pickle.load(handle)
                 if sbm_method == 'sbm': 
                     exp.states = [part_state]
                     gt_g = part_state['state'].g
@@ -201,7 +198,7 @@ class GraphToolExperiment(NetworkOutput):
         vb, eb = gt.betweenness(self.gt_g)
         self.pos = pos
 
-    # overriding the method from the NetworkOutput
+    # overriding the method from the PGCNAOutput
     def get_ModCon(self, state=0, com_df = None):
         if self.sbm_method == 'sbm':
             if com_df is None:
@@ -283,7 +280,7 @@ class GraphToolExperiment(NetworkOutput):
             part_nodes[node, -2] = node
             part_nodes[node, -1] = int(gt_g.vp["max_b"][node]) # offset to start from 0
 
-        col_names = ["b_{}".format(idx) for idx in range(0, max_part)] + ['node_idx', 'max_b']
+        col_names = ["b_{}".format(idx) for idx in range(0, max_part)] + ['node_idx', "max_b"]
         com_df = pd.DataFrame(part_nodes, columns=col_names, index=genes)
 
         self.com_df = com_df
@@ -368,6 +365,7 @@ class GraphToolExperiment(NetworkOutput):
 
         # merge
         com_df = pd.concat([com_df.drop(columns=["level_0"]), lvl_parts], axis=1)
+        com_df["max_b"] = com_df["P_lvl_0"]
 
         return com_df, lvl_parts.columns
 
@@ -624,7 +622,7 @@ class GraphToolExperiment(NetworkOutput):
 
         return fig
 
-    def comp_posterior_distribcomp_posterior_distrib(self):
+    def comp_posterior_distrib(self):
         figs, titles = [], []
         for idx, _ in enumerate(self.states):
             figs.append(self.plot_partition_prob(state_idx=idx))
@@ -745,23 +743,25 @@ class GraphToolExperiment(NetworkOutput):
         return combined_stats
 
     ######## Adding custom properties ########
-    def add_gt_prop_draw(self, gt_g: gt.Graph, com_df: pd.DataFrame, tf_list: []):
+    def add_gt_prop_draw(self, gt_g: gt.Graph, com_df: pd.DataFrame, tf_list: list):
 
         if not hasattr(self, "nodes_df"):
             self.export_to_gephi(save=False, com_df=com_df)
 
         self.nodes_df["ModCon_Rank"] = self.nodes_df["ModCon_Rank"].astype(int)
-        hex_colors = GraphToolExperiment.color_scale(color_scale="Sunset", num_points=50)
+        rank_th = 50
+        hex_colors = GraphToolExperiment.color_scale(color_scale="blues", num_points=rank_th)
 
         max_char, prcsd_genes, display_prop, is_tf, colors_rank = (6, [], [], [], [])
         for idx in gt_g.vertices():
             gene, mut_count, com = gt_g.vp["gene"][idx], gt_g.vp["mut_count"][idx], gt_g.vp['max_b'][idx]
-
             rank = self.nodes_df.loc[gene]["ModCon_Rank"]
-            if rank > 25:
-                colors_rank.append("#656369")
+            if rank > rank_th:
+                colors_rank.append("#a2a1a1")
+                # colors_rank.append("#5A54A0") - purple the highest color in Sunset scale
             else:
-                colors_rank.append(hex_colors[rank - 1])
+                colors_rank.append("#c86514")
+                # colors_rank.append(hex_colors[rank-1])
 
             if len(gene) > max_char:
                 if "ENSG" in gene:
@@ -776,6 +776,10 @@ class GraphToolExperiment(NetworkOutput):
 
             prcsd_genes.append(gene)
             display_prop.append(f'{gt_g.vp["gene"][idx]}: Mut {mut_count}, Com: {com}')
+
+        # vp_modCon_rank = gt.new_vertex_proeprty('int', modCon_rank)
+        # gt_g.vp['modCon_rank'] = vp_modCon_rank
+        # vertex_fill_color=gt.prop_to_size(vb, 0, 1, power=.1)  
 
         vp_prcsd_gene = gt_g.new_vertex_property("string", prcsd_genes)
         gt_g.vp["prcsd_gene"] = vp_prcsd_gene
@@ -807,7 +811,7 @@ class GraphToolExperiment(NetworkOutput):
         filename = f"gt_{exp_type}_{self.name}.pickle"
         full_path = folder_path + filename
         with open(full_path, "wb") as handle:
-            cPickle.dump(save_gt_exp, handle, protocol=cPickle.HIGHEST_PROTOCOL)
+            pickle.dump(save_gt_exp, handle, protocol=pickle.HIGHEST_PROTOCOL)
         return full_path
 
     def export_gephi_coord(self, graph: gt.Graph, draw_results: tuple, path: str, name: str):
@@ -849,6 +853,7 @@ class GraphToolExperiment(NetworkOutput):
             "KMeans_labels_6",
             "2019_consensus_classifier",
             "TCGA408_classifier",
+            "Lund2017.subtype"
         ]
 
         # Selecting only the present mutations
@@ -865,10 +870,24 @@ class GraphToolExperiment(NetworkOutput):
             axis=1,
         ).dropna()
 
+        if 'diff_type' in settings.keys():
+            mevs_cs = pd.concat(
+                [
+                    settings['diff_type']["Diff Type"],
+                    mevs_cs.T,
+                ],
+                axis=1,
+            ).T
+
         for col in cs_cols:
             mevs_cs[col] = mevs_cs[col].astype(str)
 
         mevs_cs = mevs_cs[vu_cols + cs_cols + mut_cols + mevs_cols]
+
+        # Rename for a better aspect
+        remap_cols = {"TCGA408_classifier": "TCGA", "KMeans_labels_6": "CA + IFNG", "2019_consensus_classifier": "Consensus",  "Lund2017.subtype": "Lund"}
+        mevs_cs = mevs_cs.rename(columns=remap_cols)
+
         mevs_cs.transpose().to_csv(f"{file_path}", sep="\t", index=True)
 
         return mevs_cs
@@ -879,19 +898,23 @@ class GraphToolExperiment(NetworkOutput):
             if self.gt_g.vp["gene"][v] == gene:
                 return v, self.gt_g.vp['max_b'][v]
 
-    def filter_graph(self, gene: str, show_own_com=True):
+    def filter_graph(self, gene: str, show_own_com=True, verbose=True):
 
         graph = self.gt_g
         # Clear the previous filter
         graph.set_edge_filter(None)
         graph.set_vertex_filter(None)
 
+        # setup the flag 
+        vp_bool = graph.new_vertex_property("bool")
+        neighbors = []        
+
         # idx, non_zero_part = find_comm_membership(gt_g, gene=gene, n_runs=10000)
         gene_idx, com = self.find_node(gene=gene)
-        print(f"{gene}. Idx = {gene_idx}. Comm = {com}")
 
-        vp_bool = graph.new_vertex_property("bool")
-        neighbors = []
+        if verbose:
+            print(f"{gene}. Idx = {gene_idx}. Comm = {com}")
+
         for idx in graph.iter_out_neighbors(gene_idx):
             vp_bool[idx] = True
             neighbors.append(idx)
@@ -899,8 +922,8 @@ class GraphToolExperiment(NetworkOutput):
         # Show the community where is the gene we seek
         if show_own_com:
             max_b = np.array(list(graph.vp["max_b"])) #
-            # For hSBM and newer exp it works graph.vp["max_b"]
-            #  but for SBM and the control experiments it doesn't
+            # For hSBM and newer exp it works graph.vp["max_b"] 
+            #  but for SBM and the control experiments it doesn't 
             #  so I had to explicitly transfer the VP of max_b in a numpy array
             for idx in np.nditer(np.where(max_b == com)):
                 vp_bool[idx] = True
@@ -909,6 +932,36 @@ class GraphToolExperiment(NetworkOutput):
         graph.set_vertex_filter(vp_bool)
 
         return neighbors
+
+    def get_gene_neigbhors(self, gene_name="BNC1", verbose=True):
+
+        neighbors = self.filter_graph(gene=gene_name, verbose=verbose)
+        self.gt_g.set_vertex_filter(None)
+
+        neighbors_stats, neighbors_df = self.process_neigbhors(neighbors)
+        return neighbors_stats, neighbors_df
+    
+    # Show only one or more community
+    def show_comms(self, communities: []):
+        """
+        Filters the graph to show only the vertices belonging to the specified communities.
+        Only works for SBM and hSBM
+
+        Parameters:
+            communities (list): A list of community labels.
+
+        Returns:
+            None
+        """
+        graph = self.gt_g
+        max_b = np.array(list(graph.vp["max_b"]))
+
+        vp_bool = graph.new_vertex_property("bool")
+        for com in communities:
+            for idx in np.nditer(np.where(max_b == com)):
+                vp_bool[idx] = True
+
+        graph.set_vertex_filter(vp_bool)
 
     def process_neigbhors(self, v_idxs:list):
 
@@ -940,7 +993,7 @@ class GraphToolExperiment(NetworkOutput):
 
         neigbhors = self.filter_graph(gene=gene_name)
         self.gt_g.set_vertex_filter(None)
-        stats_neigbhors = self.process_neigbhors(v_idxs=neigbhors)
+        stats_neigbhors, _ = self.process_neigbhors(v_idxs=neigbhors)
 
         fig1 = px.bar(stats_neigbhors, x="com", y=["num_found", "com_size"], barmode="group", text_auto=True)
         fig2 = px.bar(stats_neigbhors, x="com", y="com_ratio", barmode="group", text_auto=True)
@@ -960,7 +1013,7 @@ class GraphToolExperiment(NetworkOutput):
             "shared_x": False,
             "shared_y": False,
             "h_spacing": 0.05,
-            "v_spacing": 0.12,
+            "v_spacing": 0.15,
             "main_title": f"Neigbhours overview for {gene_name} ({self.type})",
             "height": 700,
             "width": None,
@@ -1008,7 +1061,7 @@ class GraphToolExperiment(NetworkOutput):
         # full_path = os.path.abspath(full_path)
         if os.path.isfile(full_path):
             with open(full_path, "rb") as handle:
-                exp = cPickle.load(handle)
+                exp = pickle.load(handle)
                 # we need to update the experiment's path with the current one
                 exp["gt_exp"].exps_path = path
                 print("### Loaded {}".format(exp["name"]))
@@ -1064,17 +1117,17 @@ class GraphToolExperiment(NetworkOutput):
         subplot = subplot.update_yaxes(title_text=config["y_title"])
 
         # Remove duplicate legend items
-        visited = []
-        for trace in subplot["data"]:
-            if trace["name"] is None:
-                continue
+        # visited = []
+        # for trace in subplot["data"]:
+        #     if trace["name"] is None:
+        #         continue
 
-            trace["name"] = trace["name"].split(",")[0]
-            if trace["name"] not in visited:
-                trace["showlegend"] = True
-                visited.append(trace["name"])
-            else:
-                trace["showlegend"] = False
+        #     trace["name"] = trace["name"].split(",")[0]
+        #     if trace["name"] not in visited:
+        #         trace["showlegend"] = True
+        #         visited.append(trace["name"])
+        #     else:
+        #         trace["showlegend"] = False
 
         return subplot
 
